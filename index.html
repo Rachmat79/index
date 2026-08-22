@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RT Smart Management - Aplikasi Administrasi RT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- Chosen Palette: Slate & Warm Neutral with Indigo/Emerald/Rose accents -->
+    <!-- Application Structure Plan:
+         Integrated a dedicated 'Pengaduan Warga' (Citizen Complaint) module right under the 'Status Iuran RT' section in the main navigation.
+         Workflow: Warga -> Buat Laporan -> Pilih Kategori -> Upload Foto -> Lokasi -> Submit -> RT Review -> Diproses/Menunggu -> Selesai.
+         Statuses supported: 🔴 Baru, 🟡 Diproses, 🔵 Menunggu, 🟢 Selesai.
+         Includes filterable views, quick status transition controls for RT admins, complaint location tags, photo preview, and local storage persistence.
+    -->
+    <!-- Visualization & Content Choices:
+         - Financial Summary -> Goal: Track income vs expenses -> Viz: Interactive Bar Chart (Chart.js Canvas)
+         - Dues Status -> Goal: Collection rate -> Viz: Donut Chart (Chart.js Canvas)
+         - Complaint Status Summary -> Goal: Track unresolved reports -> Viz: Filterable Status Badges & Action Table + KPI summary counter
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 260px;
+            max-height: 300px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 280px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <header class="bg-indigo-900 text-white sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <span class="text-2xl">🏠</span>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wide">RT Smart Management</h1>
+                    <p class="text-xs text-indigo-200">RT 05 / RW 01 • Mandiri & Transparan</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3 text-sm">
+                <span class="hidden md:inline text-indigo-200">Mode Akses:</span>
+                <select id="roleSelect" onchange="switchRole(this.value)" class="bg-indigo-800 border border-indigo-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium cursor-pointer">
+                    <option value="ketua">👑 Ketua / Pengurus RT</option>
+                    <option value="warga">👤 Warga (Bpk. Agus)</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full grid grid-cols-1 md:grid-cols-4 gap-6">
+
+        <aside class="md:col-span-1 space-y-2">
+            <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+                <button onclick="navigate('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-indigo-700 bg-indigo-50 transition">
+                    <span>📊</span> <span>Dashboard Overview</span>
+                </button>
+                <button onclick="navigate('warga')" id="nav-warga" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-slate-100 transition">
+                    <span>👥</span> <span>Data Warga & KK</span>
+                </button>
+                <button onclick="navigate('keuangan')" id="nav-keuangan" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-slate-100 transition">
+                    <span>💰</span> <span>Buku Kas Keuangan</span>
+                </button>
+                <button onclick="navigate('surat')" id="nav-surat" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-slate-100 transition">
+                    <span>📜</span> <span>Surat Menyurat</span>
+                </button>
+                <button onclick="navigate('iuran')" id="nav-iuran" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-slate-100 transition">
+                    <span>💳</span> <span>Status Iuran RT</span>
+                </button>
+                <button onclick="navigate('pengaduan')" id="nav-pengaduan" class="nav-btn w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-slate-100 transition">
+                    <span>🛠️</span> <span>Pengaduan Warga</span>
+                </button>
+            </div>
+
+            <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl text-xs text-indigo-900 space-y-2">
+                <p class="font-bold flex items-center space-x-1"><span>💡</span> <span>Penyimpanan Otomatis</span></p>
+                <p>Data tersimpan di browser komputer/HP ini secara permanen. Anda dapat mengunduh laporan kapan saja ke file <b>Excel (.xlsx)</b>.</p>
+            </div>
+        </aside>
+
+        <main class="md:col-span-3 space-y-6">
+
+            <section id="sec-dashboard" class="space-y-6">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800" id="welcomeHeading">Ringkasan Operasional RT</h2>
+                        <p class="text-xs text-slate-500 mt-1">Pantau seluruh indikator keuangan, kependudukan, surat, dan pengaduan warga secara real-time.</p>
+                    </div>
+                    <span id="roleBadge" class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full">Akses: Ketua RT</span>
+                </div>
+
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-xs text-slate-500 font-medium">Total Warga</p>
+                        <p class="text-xl font-bold text-slate-800 mt-1" id="kpiTotalWarga">0</p>
+                        <p class="text-[10px] text-emerald-600 mt-1 font-semibold">✔ Terdaftar</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-xs text-slate-500 font-medium">Saldo Kas RT</p>
+                        <p class="text-lg font-bold text-indigo-900 mt-1" id="kpiSaldoKas">Rp 0</p>
+                        <p class="text-[10px] text-slate-400 mt-1">Running Balance</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-xs text-slate-500 font-medium">Iuran Bulan Ini</p>
+                        <p class="text-lg font-bold text-emerald-600 mt-1" id="kpiCollectionRate">0%</p>
+                        <p class="text-[10px] text-slate-500 mt-1">Pelunasan</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-xs text-slate-500 font-medium">Pending Surat</p>
+                        <p class="text-xl font-bold text-amber-600 mt-1" id="kpiPendingSurat">0</p>
+                        <p class="text-[10px] text-amber-700 mt-1">Menunggu RT</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <p class="text-xs text-slate-500 font-medium">Pengaduan Baru</p>
+                        <p class="text-xl font-bold text-rose-600 mt-1" id="kpiPengaduanBaru">0</p>
+                        <p class="text-[10px] text-rose-700 mt-1">Perlu Diproses</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3">Arus Kas Keuangan (Pemasukan vs Pengeluaran)</h3>
+                        <div class="chart-container">
+                            <canvas id="chartKas"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-bold text-slate-800 text-sm mb-3">Proporsi Status Pembayaran Iuran Warga</h3>
+                        <div class="chart-container">
+                            <canvas id="chartIuran"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-warga" class="space-y-4 hidden">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Modul Data Kependudukan</h2>
+                        <p class="text-xs text-slate-500">Kelola data Kepala Keluarga dan anggota warga RT.</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="exportToExcel('tableWarga', 'Data_Warga_RT')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>📥</span> <span>Export Excel</span>
+                        </button>
+                        <button onclick="toggleModal('modalWarga', true)" class="admin-only bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>✚</span> <span>Tambah Warga</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-3 bg-slate-50 border-b border-slate-100 flex gap-2">
+                        <input type="text" id="searchWarga" onkeyup="filterWarga()" placeholder="Cari Nama, NIK, atau Block Rumah..." class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="tableWarga" class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                <tr>
+                                    <th class="p-3">No. KK / NIK</th>
+                                    <th class="p-3">Nama Lengkap</th>
+                                    <th class="p-3">Alamat Rumah</th>
+                                    <th class="p-3">No. HP</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3 text-right admin-only">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyWarga" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-keuangan" class="space-y-4 hidden">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Buku Kas & Transparansi Keuangan</h2>
+                        <p class="text-xs text-slate-500">Pencatatan saldo masuk dan pengeluaran kas RT secara berkala.</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="exportToExcel('tableKeuangan', 'Laporan_Keuangan_RT')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>📥</span> <span>Export Excel</span>
+                        </button>
+                        <button onclick="toggleModal('modalKas', true)" class="admin-only bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>✚</span> <span>Catat Transaksi</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table id="tableKeuangan" class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                <tr>
+                                    <th class="p-3">Tanggal</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Deskripsi Transaksi</th>
+                                    <th class="p-3 text-right text-emerald-700">Pemasukan (+)</th>
+                                    <th class="p-3 text-right text-rose-700">Pengeluaran (-)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyKeuangan" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-surat" class="space-y-4 hidden">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Layanan Surat Menyurat</h2>
+                        <p class="text-xs text-slate-500">Pengajuan surat pengantar KTP, Domisili, dan Keterangan RT.</p>
+                    </div>
+                    <button onclick="toggleModal('modalSurat', true)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                        <span>📝</span> <span>Ajukan Surat Baru</span>
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                <tr>
+                                    <th class="p-3">Tanggal</th>
+                                    <th class="p-3">Pemohon</th>
+                                    <th class="p-3">Jenis Surat</th>
+                                    <th class="p-3">Keperluan</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodySurat" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-iuran" class="space-y-4 hidden">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">Status Tagihan Iuran Bulanan</h2>
+                        <p class="text-xs text-slate-500">Pemantauan dan pengelolaan iuran kebersihan dan keamanan per Kepala Keluarga.</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="exportToExcel('tableIuran', 'Tagihan_Iuran_RT')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>📥</span> <span>Export Excel</span>
+                        </button>
+                        <button onclick="switchIuranTab('add')" class="admin-only bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>✚</span> <span>Tambah Tagihan Warga</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex border-b border-slate-200 bg-white rounded-t-2xl px-4 pt-2 space-x-4 text-xs font-bold">
+                    <button id="tabBtnIuranList" onclick="switchIuranTab('list')" class="pb-3 text-indigo-600 border-b-2 border-indigo-600 flex items-center space-x-1.5 transition">
+                        <span>📋</span> <span>Daftar Status Iuran</span>
+                    </button>
+                    <button id="tabBtnIuranAdd" onclick="switchIuranTab('add')" class="admin-only pb-3 text-slate-500 hover:text-indigo-600 border-b-2 border-transparent flex items-center space-x-1.5 transition">
+                        <span>➕</span> <span>Tambah Tagihan Warga</span>
+                    </button>
+                </div>
+
+                <div id="iuranViewList" class="bg-white rounded-b-2xl border border-slate-200 border-t-0 shadow-sm overflow-hidden">
+                    <div class="p-3 bg-slate-50 border-b border-slate-100 flex gap-2">
+                        <input type="text" id="searchIuran" onkeyup="filterIuran()" placeholder="Cari Nama Warga atau Periode..." class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="tableIuran" class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                <tr>
+                                    <th class="p-3">Nama Warga</th>
+                                    <th class="p-3">Periode</th>
+                                    <th class="p-3">Nominal</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3 text-right">Tindakan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyIuran" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="iuranViewAdd" class="bg-white rounded-b-2xl border border-slate-200 border-t-0 p-6 shadow-sm hidden">
+                    <div class="max-w-xl space-y-4">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">Tambah Records Tagihan Iuran Warga</h3>
+                            <p class="text-xs text-slate-500">Pilih warga dari database atau tulis nama warga baru untuk dibuatkan kewajiban iuran.</p>
+                        </div>
+                        
+                        <form onsubmit="saveNewIuranForm(event)" class="space-y-4 text-xs">
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Pilih Warga Terdaftar</label>
+                                <select id="inpIuranWargaSelect" onchange="autoFillWargaName(this.value)" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Nama Warga (Jika tidak ada di daftar)</label>
+                                <input type="text" id="inpIuranNamaCustom" placeholder="Masukkan nama warga..." required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block font-semibold text-slate-700 mb-1">Periode Tagihan</label>
+                                    <input type="text" id="inpIuranPeriode" value="Agustus 2026" required placeholder="Contoh: Agustus 2026" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-slate-700 mb-1">Nominal Iuran (Rp)</label>
+                                    <input type="number" id="inpIuranNominal" value="50000" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Status Pembayaran Awal</label>
+                                <select id="inpIuranStatusAwal" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option value="Belum Bayar">Belum Bayar</option>
+                                    <option value="Lunas">Lunas (Sudah Dibayar)</option>
+                                </select>
+                            </div>
+
+                            <div class="flex items-center space-x-2 pt-2">
+                                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold transition">
+                                    Simpan Tagihan Iuran
+                                </button>
+                                <button type="button" onclick="switchIuranTab('list')" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg font-semibold hover:bg-slate-200 transition">
+                                    Batal
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </section>
+
+            <section id="sec-pengaduan" class="space-y-4 hidden">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">🛠️ Pengaduan & Laporan Warga</h2>
+                        <p class="text-xs text-slate-500">Sistem penanganan laporan fasilitas, kebersihan, & keamanan lingkungan RT.</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="exportToExcel('tablePengaduan', 'Laporan_Pengaduan_RT')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>📥</span> <span>Export Excel</span>
+                        </button>
+                        <button onclick="toggleModal('modalPengaduan', true)" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 shadow-sm transition">
+                            <span>📢</span> <span>Buat Laporan Baru</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-indigo-900 text-white p-4 rounded-2xl shadow-sm text-xs space-y-2">
+                    <p class="font-bold flex items-center space-x-1 text-indigo-200"><span>🔄</span> <span>Alur Layanan Pengaduan:</span></p>
+                    <div class="flex flex-wrap items-center gap-2 font-medium">
+                        <span class="bg-indigo-800 px-2 py-1 rounded">1. Warga Buat Laporan</span>
+                        <span>➔</span>
+                        <span class="bg-indigo-800 px-2 py-1 rounded">2. Pilih Kategori & Upload Foto</span>
+                        <span>➔</span>
+                        <span class="bg-indigo-800 px-2 py-1 rounded">3. Tentukan Lokasi</span>
+                        <span>➔</span>
+                        <span class="bg-indigo-800 px-2 py-1 rounded">4. Submit & RT Review</span>
+                        <span>➔</span>
+                        <span class="bg-indigo-800 px-2 py-1 rounded">5. Diproses / Menunggu</span>
+                        <span>➔</span>
+                        <span class="bg-emerald-700 px-2 py-1 rounded">6. Selesai</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <button onclick="filterPengaduanByStatus('All')" class="p-3 bg-white border border-slate-200 rounded-xl text-left hover:border-slate-400 transition">
+                        <p class="text-[10px] text-slate-500 uppercase font-semibold">Total Pengaduan</p>
+                        <p class="text-lg font-bold text-slate-800 mt-0.5" id="cntPengaduanAll">0</p>
+                    </button>
+                    <button onclick="filterPengaduanByStatus('Baru')" class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-left hover:border-rose-400 transition">
+                        <p class="text-[10px] text-rose-700 uppercase font-semibold">🔴 Laporan Baru</p>
+                        <p class="text-lg font-bold text-rose-800 mt-0.5" id="cntPengaduanBaru">0</p>
+                    </button>
+                    <button onclick="filterPengaduanByStatus('Diproses')" class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-left hover:border-amber-400 transition">
+                        <p class="text-[10px] text-amber-700 uppercase font-semibold">🟡 Diproses</p>
+                        <p class="text-lg font-bold text-amber-800 mt-0.5" id="cntPengaduanDiproses">0</p>
+                    </button>
+                    <button onclick="filterPengaduanByStatus('Selesai')" class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-left hover:border-emerald-400 transition">
+                        <p class="text-[10px] text-emerald-700 uppercase font-semibold">🟢 Selesai</p>
+                        <p class="text-lg font-bold text-emerald-800 mt-0.5" id="cntPengaduanSelesai">0</p>
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-2 justify-between items-center">
+                        <input type="text" id="searchPengaduan" onkeyup="filterPengaduanTable()" placeholder="Cari Pelapor, Judul Laporan, atau Lokasi..." class="w-full sm:w-72 text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <div class="flex items-center space-x-2 text-xs">
+                            <span class="text-slate-500 font-medium">Filter Status:</span>
+                            <select id="filterStatusPengaduanSelect" onchange="filterPengaduanByStatus(this.value)" class="border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white">
+                                <option value="All">Semua Status</option>
+                                <option value="Baru">🔴 Baru</option>
+                                <option value="Diproses">🟡 Diproses</option>
+                                <option value="Menunggu">🔵 Menunggu</option>
+                                <option value="Selesai">🟢 Selesai</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="tablePengaduan" class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase">
+                                <tr>
+                                    <th class="p-3">Tanggal / Pelapor</th>
+                                    <th class="p-3">Kategori & Judul</th>
+                                    <th class="p-3">Lokasi Kejadian</th>
+                                    <th class="p-3">Bukti Foto</th>
+                                    <th class="p-3">Status Workflow</th>
+                                    <th class="p-3 text-right">Tindakan RT</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyPengaduan" class="divide-y divide-slate-100">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="modalWarga" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 class="font-bold text-slate-800 text-base">Tambah Data Warga Baru</h3>
+            <form onsubmit="saveWarga(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">NIK (16 Digit)</label>
+                    <input type="number" id="inpNik" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Nama Lengkap</label>
+                    <input type="text" id="inpNama" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Alamat (Blok & No Rumah)</label>
+                    <input type="text" id="inpAlamat" placeholder="Blok A No. 12" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">No. Whatsapp / HP</label>
+                    <input type="text" id="inpPhone" placeholder="08123456789" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="toggleModal('modalWarga', false)" class="px-4 py-2 border border-slate-200 rounded-lg text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modalKas" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 class="font-bold text-slate-800 text-base">Catat Transaksi Keuangan Kas</h3>
+            <form onsubmit="saveKas(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Jenis Transaksi</label>
+                    <select id="inpJenisKas" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="in">Pemasukan (+)</option>
+                        <option value="out">Pengeluaran (-)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Kategori</label>
+                    <input type="text" id="inpKategoriKas" placeholder="Kebersihan, Donasi, Keamanan, dll" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Deskripsi / Keterangan</label>
+                    <input type="text" id="inpDescKas" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Nominal (Rp)</label>
+                    <input type="number" id="inpNominalKas" required class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="toggleModal('modalKas', false)" class="px-4 py-2 border border-slate-200 rounded-lg text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium">Simpan Transaksi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modalSurat" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 class="font-bold text-slate-800 text-base">Form Pengajuan Surat Pengantar</h3>
+            <form onsubmit="saveSurat(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Nama Pemohon</label>
+                    <input type="text" id="inpPemohonSurat" required placeholder="Nama Anda" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Jenis Surat Pengantar</label>
+                    <select id="inpJenisSurat" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="Surat Pengantar KTP">Surat Pengantar KTP</option>
+                        <option value="Surat Keterangan Domisili">Surat Keterangan Domisili</option>
+                        <option value="Surat Pengantar KK">Surat Pengantar KK</option>
+                        <option value="Surat Keterangan Usaha">Surat Keterangan Usaha</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Keperluan / Catatan</label>
+                    <textarea id="inpKeperluanSurat" required rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="toggleModal('modalSurat', false)" class="px-4 py-2 border border-slate-200 rounded-lg text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium">Kirim Pengajuan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modalPengaduan" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 class="font-bold text-slate-800 text-base">Buat Laporan Pengaduan Warga</h3>
+            <form onsubmit="savePengaduan(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Nama Pelapor</label>
+                    <input type="text" id="inpPelaporPengaduan" required placeholder="Nama Pelapor" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Pilih Kategori Laporan</label>
+                    <select id="inpKategoriPengaduan" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="Fasilitas Umum">🛠️ Fasilitas Umum</option>
+                        <option value="Kebersihan & Sampah">🧹 Kebersihan & Sampah</option>
+                        <option value="Keamanan & Ketertiban">🛡️ Keamanan & Ketertiban</option>
+                        <option value="Penerangan Jalan">💡 Penerangan Jalan</option>
+                        <option value="Lain-lain">📌 Lain-lain</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Judul Laporan Singkat</label>
+                    <input type="text" id="inpJudulPengaduan" required placeholder="Contoh: Lampu Jalan Gang B Padam" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Lokasi Kejadian</label>
+                    <input type="text" id="inpLokasiPengaduan" required placeholder="Contoh: Depan Rumah Blok B No. 4" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Upload Foto Bukti (Gambar)</label>
+                    <input type="file" id="inpFotoPengaduan" accept="image/*" onchange="previewPhotoFile(this)" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-slate-500">
+                    <input type="hidden" id="inpFotoBase64">
+                    <div id="photoPreviewContainer" class="mt-2 hidden">
+                        <img id="photoPreviewImg" src="" alt="Preview" class="h-20 rounded-lg border border-slate-200 object-cover">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">Rincian Deskripsi Pengaduan</label>
+                    <textarea id="inpDescPengaduan" required rows="3" placeholder="Jelaskan secara rinci permasalahan..." class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="toggleModal('modalPengaduan', false)" class="px-4 py-2 border border-slate-200 rounded-lg text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium transition">Kirim Laporan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_WARGA = [
+            { id: 1, nik: "3171010505850001", name: "Agus Pratama", address: "Blok A No. 1", phone: "08123456781", status: "Aktif" },
+            { id: 2, nik: "3171010505850002", name: "Siti Aminah", address: "Blok A No. 2", phone: "08123456782", status: "Aktif" },
+            { id: 3, nik: "3171010505850003", name: "Budi Santoso", address: "Blok B No. 5", phone: "08123456783", status: "Aktif" },
+            { id: 4, nik: "3171010505850004", name: "Hendro Siswanto", address: "Blok C No. 8", phone: "08123456784", status: "Pendatang" }
+        ];
+
+        const DEFAULT_KAS = [
+            { id: 1, date: "2026-08-01", type: "in", category: "Iuran Warga", desc: "Iuran Kebersihan & Keamanan Bulan Agustus", amount: 2000000 },
+            { id: 2, date: "2026-08-05", type: "out", category: "Keamanan", desc: "Honor Petugas Satpam Malam", amount: 800000 },
+            { id: 3, date: "2026-08-10", type: "out", category: "Kebersihan", desc: "Pengangkutan Sampah RT", amount: 400000 },
+            { id: 4, date: "2026-08-15", type: "in", category: "Donasi", desc: "Donasi Warga untuk Perbaikan Gapura", amount: 500000 }
+        ];
+
+        const DEFAULT_SURAT = [
+            { id: 1, date: "2026-08-18", name: "Siti Aminah", type: "Surat Pengantar KTP", desc: "Perpanjangan Masa Berlaku KTP", status: "Menunggu" },
+            { id: 2, date: "2026-08-15", name: "Hendro Siswanto", type: "Surat Keterangan Domisili", desc: "Persyaratan Kelurahan", status: "Disetujui" }
+        ];
+
+        const DEFAULT_IURAN = [
+            { id: 1, name: "Agus Pratama", period: "Agustus 2026", amount: 50000, status: "Belum Bayar" },
+            { id: 2, name: "Siti Aminah", period: "Agustus 2026", amount: 50000, status: "Lunas" },
+            { id: 3, name: "Budi Santoso", period: "Agustus 2026", amount: 50000, status: "Lunas" },
+            { id: 4, name: "Hendro Siswanto", period: "Agustus 2026", amount: 50000, status: "Lunas" }
+        ];
+
+        const DEFAULT_PENGADUAN = [
+            { id: 1, date: "2026-08-20", name: "Agus Pratama", category: "Penerangan Jalan", title: "Lampu Jalan Utama Padam", location: "Depan Blok A No. 3", desc: "Lampu jalan mati sejak kemarin malam, membahayakan saat gelap.", photo: "", status: "Baru" },
+            { id: 2, date: "2026-08-19", name: "Siti Aminah", category: "Kebersihan & Sampah", title: "Penumpukan Sampah Musim Hujan", location: "Gang Selokan Blok A", desc: "Sampah menyumbat aliran selokan sehingga air meluap.", photo: "", status: "Diproses" },
+            { id: 3, date: "2026-08-17", name: "Budi Santoso", category: "Fasilitas Umum", title: "Pagar Lapangan Rusak", location: "Taman RT Blok C", desc: "Pagar besi lapangan olahraga terlepas dari engselnya.", photo: "", status: "Selesai" }
+        ];
+
+        let currentRole = 'ketua';
+        let currentFilterStatusPengaduan = 'All';
+        let dbWarga = JSON.parse(localStorage.getItem('rt_warga')) || DEFAULT_WARGA;
+        let dbKas = JSON.parse(localStorage.getItem('rt_kas')) || DEFAULT_KAS;
+        let dbSurat = JSON.parse(localStorage.getItem('rt_surat')) || DEFAULT_SURAT;
+        let dbIuran = JSON.parse(localStorage.getItem('rt_iuran')) || DEFAULT_IURAN;
+        let dbPengaduan = JSON.parse(localStorage.getItem('rt_pengaduan')) || DEFAULT_PENGADUAN;
+
+        function persistData() {
+            localStorage.setItem('rt_warga', JSON.stringify(dbWarga));
+            localStorage.setItem('rt_kas', JSON.stringify(dbKas));
+            localStorage.setItem('rt_surat', JSON.stringify(dbSurat));
+            localStorage.setItem('rt_iuran', JSON.stringify(dbIuran));
+            localStorage.setItem('rt_pengaduan', JSON.stringify(dbPengaduan));
+            renderAll();
+        }
+
+        function navigate(secId) {
+            document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
+            document.getElementById(`sec-${secId}`).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-50', 'text-indigo-700');
+                btn.classList.add('text-slate-600');
+            });
+            const activeBtn = document.getElementById(`nav-${secId}`);
+            if(activeBtn) {
+                activeBtn.classList.add('bg-indigo-50', 'text-indigo-700');
+                activeBtn.classList.remove('text-slate-600');
+            }
+        }
+
+        function switchIuranTab(tabName) {
+            const listTab = document.getElementById('iuranViewList');
+            const addTab = document.getElementById('iuranViewAdd');
+            const btnList = document.getElementById('tabBtnIuranList');
+            const btnAdd = document.getElementById('tabBtnIuranAdd');
+
+            if(tabName === 'list') {
+                listTab.classList.remove('hidden');
+                addTab.classList.add('hidden');
+                btnList.className = "pb-3 text-indigo-600 border-b-2 border-indigo-600 flex items-center space-x-1.5 transition font-bold";
+                btnAdd.className = "admin-only pb-3 text-slate-500 hover:text-indigo-600 border-b-2 border-transparent flex items-center space-x-1.5 transition font-bold";
+            } else {
+                listTab.classList.add('hidden');
+                addTab.classList.remove('hidden');
+                btnAdd.className = "admin-only pb-3 text-indigo-600 border-b-2 border-indigo-600 flex items-center space-x-1.5 transition font-bold";
+                btnList.className = "pb-3 text-slate-500 hover:text-indigo-600 border-b-2 border-transparent flex items-center space-x-1.5 transition font-bold";
+                populateWargaSelect();
+            }
+        }
+
+        function populateWargaSelect() {
+            const select = document.getElementById('inpIuranWargaSelect');
+            select.innerHTML = `<option value="">-- Pilih dari data warga terdaftar --</option>` + 
+                dbWarga.map(w => `<option value="${w.name}">${w.name} (${w.address})</option>`).join('');
+        }
+
+        function autoFillWargaName(val) {
+            if(val) {
+                document.getElementById('inpIuranNamaCustom').value = val;
+            }
+        }
+
+        function switchRole(role) {
+            currentRole = role;
+            const badge = document.getElementById('roleBadge');
+            const welcome = document.getElementById('welcomeHeading');
+            
+            if(role === 'ketua') {
+                badge.innerText = "Akses: Ketua / Pengurus RT";
+                badge.className = "bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full";
+                welcome.innerText = "Ringkasan Operasional RT";
+                document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+            } else {
+                badge.innerText = "Akses: Warga";
+                badge.className = "bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full";
+                welcome.innerText = "Selamat Datang, Bapak Agus Pratama";
+                document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
+                switchIuranTab('list');
+            }
+            renderAll();
+        }
+
+        function toggleModal(id, show) {
+            const modal = document.getElementById(id);
+            if(show) {
+                modal.classList.remove('hidden');
+                if(id === 'modalPengaduan' && currentRole === 'warga') {
+                    document.getElementById('inpPelaporPengaduan').value = "Agus Pratama";
+                }
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        let chartKasInstance = null;
+        let chartIuranInstance = null;
+
+        function renderAll() {
+            document.getElementById('kpiTotalWarga').innerText = dbWarga.length;
+            
+            const totalIn = dbKas.filter(k => k.type === 'in').reduce((acc, c) => acc + c.amount, 0);
+            const totalOut = dbKas.filter(k => k.type === 'out').reduce((acc, c) => acc + c.amount, 0);
+            const saldo = totalIn - totalOut;
+            document.getElementById('kpiSaldoKas').innerText = `Rp ${saldo.toLocaleString('id-ID')}`;
+
+            const lunasCount = dbIuran.filter(i => i.status === 'Lunas').length;
+            const rate = Math.round((lunasCount / dbIuran.length) * 100) || 0;
+            document.getElementById('kpiCollectionRate').innerText = `${rate}%`;
+
+            const pendingSurat = dbSurat.filter(s => s.status === 'Menunggu').length;
+            document.getElementById('kpiPendingSurat').innerText = pendingSurat;
+
+            const baruPengaduan = dbPengaduan.filter(p => p.status === 'Baru').length;
+            document.getElementById('kpiPengaduanBaru').innerText = baruPengaduan;
+
+            renderTableWarga();
+            renderTableKeuangan();
+            renderTableSurat();
+            renderTableIuran();
+            renderTablePengaduan();
+
+            renderCharts(totalIn, totalOut, lunasCount, dbIuran.length - lunasCount);
+        }
+
+        function renderTableWarga() {
+            const tbody = document.getElementById('tbodyWarga');
+            tbody.innerHTML = dbWarga.map(w => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-mono text-slate-500">${w.nik}</td>
+                    <td class="p-3 font-semibold text-slate-800">${w.name}</td>
+                    <td class="p-3 text-slate-600">${w.address}</td>
+                    <td class="p-3 text-slate-600">${w.phone}</td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${w.status === 'Aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${w.status}</span>
+                    </td>
+                    <td class="p-3 text-right admin-only">
+                        <button onclick="deleteWarga(${w.id})" class="text-rose-600 hover:text-rose-800 font-medium text-[11px]">Hapus</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTableKeuangan() {
+            const tbody = document.getElementById('tbodyKeuangan');
+            tbody.innerHTML = dbKas.map(k => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 text-slate-500">${k.date}</td>
+                    <td class="p-3 font-medium text-slate-700"><span class="bg-slate-100 px-2 py-0.5 rounded">${k.category}</span></td>
+                    <td class="p-3 text-slate-800">${k.desc}</td>
+                    <td class="p-3 text-right font-medium text-emerald-600">${k.type === 'in' ? 'Rp ' + k.amount.toLocaleString('id-ID') : '-'}</td>
+                    <td class="p-3 text-right font-medium text-rose-600">${k.type === 'out' ? 'Rp ' + k.amount.toLocaleString('id-ID') : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTableSurat() {
+            const tbody = document.getElementById('tbodySurat');
+            tbody.innerHTML = dbSurat.map(s => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 text-slate-500">${s.date}</td>
+                    <td class="p-3 font-semibold text-slate-800">${s.name}</td>
+                    <td class="p-3 text-indigo-700 font-medium">${s.type}</td>
+                    <td class="p-3 text-slate-600">${s.desc}</td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'Disetujui' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${s.status}</span>
+                    </td>
+                    <td class="p-3 text-right">
+                        ${s.status === 'Menunggu' && currentRole === 'ketua' ? 
+                            `<button onclick="approveSurat(${s.id})" class="bg-indigo-600 text-white px-2.5 py-1 rounded-lg text-[10px]">Setujui</button>` : 
+                            `<span class="text-slate-400 text-[10px]">Selesai</span>`}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTableIuran() {
+            const tbody = document.getElementById('tbodyIuran');
+            tbody.innerHTML = dbIuran.map(i => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-semibold text-slate-800">${i.name}</td>
+                    <td class="p-3 text-slate-600">${i.period}</td>
+                    <td class="p-3 font-medium text-slate-700">Rp ${i.amount.toLocaleString('id-ID')}</td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${i.status === 'Lunas' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${i.status}</span>
+                    </td>
+                    <td class="p-3 text-right">
+                        ${i.status === 'Belum Bayar' ? 
+                            `<button onclick="payIuran(${i.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] transition">Bayar Sekarang</button>` : 
+                            `<span class="text-emerald-600 text-[11px] font-medium">✔ Lunas</span>`}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function getStatusBadgePengaduan(status) {
+            if(status === 'Baru') return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">🔴 Baru</span>`;
+            if(status === 'Diproses') return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">🟡 Diproses</span>`;
+            if(status === 'Menunggu') return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">🔵 Menunggu</span>`;
+            if(status === 'Selesai') return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 Selesai</span>`;
+            return status;
+        }
+
+        function renderTablePengaduan() {
+            document.getElementById('cntPengaduanAll').innerText = dbPengaduan.length;
+            document.getElementById('cntPengaduanBaru').innerText = dbPengaduan.filter(p => p.status === 'Baru').length;
+            document.getElementById('cntPengaduanDiproses').innerText = dbPengaduan.filter(p => p.status === 'Diproses').length;
+            document.getElementById('cntPengaduanSelesai').innerText = dbPengaduan.filter(p => p.status === 'Selesai').length;
+
+            const tbody = document.getElementById('tbodyPengaduan');
+            let items = dbPengaduan;
+            if(currentFilterStatusPengaduan !== 'All') {
+                items = items.filter(p => p.status === currentFilterStatusPengaduan);
+            }
+
+            if(items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">Tidak ada data pengaduan untuk kategori ini.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = items.map(p => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3">
+                        <p class="font-semibold text-slate-800">${p.name}</p>
+                        <p class="text-[10px] text-slate-400">${p.date}</p>
+                    </td>
+                    <td class="p-3">
+                        <span class="text-[10px] bg-slate-100 text-indigo-700 px-2 py-0.5 rounded font-bold block w-max mb-1">${p.category}</span>
+                        <p class="font-semibold text-slate-800 text-xs">${p.title}</p>
+                        <p class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">${p.desc}</p>
+                    </td>
+                    <td class="p-3 text-slate-600 font-medium">📍 ${p.location}</td>
+                    <td class="p-3">
+                        ${p.photo ? 
+                            `<img src="${p.photo}" class="h-10 w-10 object-cover rounded-lg border border-slate-200 cursor-pointer" onclick="viewPhotoModal('${p.photo}')" title="Klik memperbesar">` : 
+                            `<span class="text-slate-400 text-[10px]">📷 Tanpa Foto</span>`}
+                    </td>
+                    <td class="p-3">${getStatusBadgePengaduan(p.status)}</td>
+                    <td class="p-3 text-right">
+                        ${currentRole === 'ketua' ? `
+                            <select onchange="updateStatusPengaduan(${p.id}, this.value)" class="text-[10px] border border-slate-300 rounded px-2 py-1 font-semibold focus:outline-none bg-white cursor-pointer">
+                                <option value="Baru" ${p.status === 'Baru' ? 'selected' : ''}>🔴 Set Baru</option>
+                                <option value="Diproses" ${p.status === 'Diproses' ? 'selected' : ''}>🟡 Set Diproses</option>
+                                <option value="Menunggu" ${p.status === 'Menunggu' ? 'selected' : ''}>🔵 Set Menunggu</option>
+                                <option value="Selesai" ${p.status === 'Selesai' ? 'selected' : ''}>🟢 Set Selesai</option>
+                            </select>
+                        ` : `
+                            <span class="text-[10px] text-slate-400">Pantau Status</span>
+                        `}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterPengaduanByStatus(status) {
+            currentFilterStatusPengaduan = status;
+            document.getElementById('filterStatusPengaduanSelect').value = status;
+            renderTablePengaduan();
+        }
+
+        function filterPengaduanTable() {
+            const query = document.getElementById('searchPengaduan').value.toLowerCase();
+            const rows = document.querySelectorAll('#tbodyPengaduan tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        function updateStatusPengaduan(id, newStatus) {
+            const item = dbPengaduan.find(p => p.id === id);
+            if(item) {
+                item.status = newStatus;
+                persistData();
+            }
+        }
+
+        function previewPhotoFile(input) {
+            if(input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('photoPreviewImg').src = e.target.result;
+                    document.getElementById('inpFotoBase64').value = e.target.result;
+                    document.getElementById('photoPreviewContainer').classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function viewPhotoModal(src) {
+            const w = window.open("");
+            w.document.write(`<img src="${src}" style="max-width:100%; height:auto; display:block; margin:auto;">`);
+        }
+
+        function savePengaduan(e) {
+            e.preventDefault();
+            const newPengaduan = {
+                id: Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                name: document.getElementById('inpPelaporPengaduan').value,
+                category: document.getElementById('inpKategoriPengaduan').value,
+                title: document.getElementById('inpJudulPengaduan').value,
+                location: document.getElementById('inpLokasiPengaduan').value,
+                desc: document.getElementById('inpDescPengaduan').value,
+                photo: document.getElementById('inpFotoBase64').value || "",
+                status: "Baru"
+            };
+            dbPengaduan.unshift(newPengaduan);
+            toggleModal('modalPengaduan', false);
+            document.getElementById('photoPreviewContainer').classList.add('hidden');
+            document.getElementById('photoPreviewImg').src = "";
+            document.getElementById('inpFotoBase64').value = "";
+            persistData();
+            e.target.reset();
+            navigate('pengaduan');
+        }
+
+        function renderCharts(kasIn, kasOut, iuranLunas, iuranBelum) {
+            const ctxKas = document.getElementById('chartKas').getContext('2d');
+            if(chartKasInstance) chartKasInstance.destroy();
+            chartKasInstance = new Chart(ctxKas, {
+                type: 'bar',
+                data: {
+                    labels: ['Pemasukan', 'Pengeluaran'],
+                    datasets: [{
+                        label: 'Nominal Kas (Rp)',
+                        data: [kasIn, kasOut],
+                        backgroundColor: ['#10b981', '#f43f5e'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const ctxIuran = document.getElementById('chartIuran').getContext('2d');
+            if(chartIuranInstance) chartIuranInstance.destroy();
+            chartIuranInstance = new Chart(ctxIuran, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Lunas', 'Belum Bayar'],
+                    datasets: [{
+                        data: [iuranLunas, iuranBelum],
+                        backgroundColor: ['#10b981', '#f43f5e']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function saveWarga(e) {
+            e.preventDefault();
+            const newWarga = {
+                id: Date.now(),
+                nik: document.getElementById('inpNik').value,
+                name: document.getElementById('inpNama').value,
+                address: document.getElementById('inpAlamat').value,
+                phone: document.getElementById('inpPhone').value,
+                status: "Aktif"
+            };
+            dbWarga.push(newWarga);
+            toggleModal('modalWarga', false);
+            persistData();
+            e.target.reset();
+        }
+
+        function saveNewIuranForm(e) {
+            e.preventDefault();
+            const newIuran = {
+                id: Date.now(),
+                name: document.getElementById('inpIuranNamaCustom').value,
+                period: document.getElementById('inpIuranPeriode').value,
+                amount: parseInt(document.getElementById('inpIuranNominal').value) || 50000,
+                status: document.getElementById('inpIuranStatusAwal').value
+            };
+            dbIuran.push(newIuran);
+            persistData();
+            e.target.reset();
+            switchIuranTab('list');
+        }
+
+        function deleteWarga(id) {
+            if(confirm("Apakah Anda yakin ingin menghapus data warga ini?")) {
+                dbWarga = dbWarga.filter(w => w.id !== id);
+                persistData();
+            }
+        }
+
+        function saveKas(e) {
+            e.preventDefault();
+            const newKas = {
+                id: Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                type: document.getElementById('inpJenisKas').value,
+                category: document.getElementById('inpKategoriKas').value,
+                desc: document.getElementById('inpDescKas').value,
+                amount: parseInt(document.getElementById('inpNominalKas').value)
+            };
+            dbKas.push(newKas);
+            toggleModal('modalKas', false);
+            persistData();
+            e.target.reset();
+        }
+
+        function saveSurat(e) {
+            e.preventDefault();
+            const newSurat = {
+                id: Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                name: document.getElementById('inpPemohonSurat').value,
+                type: document.getElementById('inpJenisSurat').value,
+                desc: document.getElementById('inpKeperluanSurat').value,
+                status: "Menunggu"
+            };
+            dbSurat.push(newSurat);
+            toggleModal('modalSurat', false);
+            persistData();
+            e.target.reset();
+        }
+
+        function approveSurat(id) {
+            const item = dbSurat.find(s => s.id === id);
+            if(item) {
+                item.status = "Disetujui";
+                persistData();
+            }
+        }
+
+        function payIuran(id) {
+            const item = dbIuran.find(i => i.id === id);
+            if(item) {
+                item.status = "Lunas";
+                dbKas.push({
+                    id: Date.now(),
+                    date: new Date().toISOString().split('T')[0],
+                    type: 'in',
+                    category: 'Iuran Warga',
+                    desc: `Pembayaran Iuran RT (${item.name} - ${item.period})`,
+                    amount: item.amount
+                });
+                persistData();
+            }
+        }
+
+        function filterWarga() {
+            const query = document.getElementById('searchWarga').value.toLowerCase();
+            const rows = document.querySelectorAll('#tbodyWarga tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        function filterIuran() {
+            const query = document.getElementById('searchIuran').value.toLowerCase();
+            const rows = document.querySelectorAll('#tbodyIuran tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        function exportToExcel(tableId, filename) {
+            const table = document.getElementById(tableId);
+            const wb = XLSX.utils.table_to_book(table, { sheet: "Sheet1" });
+            XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        window.onload = function() {
+            switchRole('ketua');
+            renderAll();
+        };
+    </script>
+</body>
+</html>
