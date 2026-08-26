@@ -1106,6 +1106,12 @@
             const login = document.createElement('div');
 
             login.id = 'rtLoginScreen';
+            login.style.position = 'fixed';
+login.style.top = '0';
+login.style.left = '0';
+login.style.width = '100%';
+login.style.height = '100%';
+login.style.zIndex = '999999';
 
             login.innerHTML = `
                 <div style="
