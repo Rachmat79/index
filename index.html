@@ -1030,21 +1030,68 @@
             }
         }
 
-        function saveKas(e) {
-            e.preventDefault();
-            const newKas = {
-                id: Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                type: document.getElementById('inpJenisKas').value,
-                category: document.getElementById('inpKategoriKas').value,
-                desc: document.getElementById('inpDescKas').value,
-                amount: parseInt(document.getElementById('inpNominalKas').value)
-            };
-            dbKas.push(newKas);
-            toggleModal('modalKas', false);
-            persistData();
-            e.target.reset();
+        async function saveKas(e) {
+    e.preventDefault();
+
+    const jenis = document.getElementById('inpJenisKas').value;
+    const kategori = document.getElementById('inpKategoriKas').value.trim();
+    const keterangan = document.getElementById('inpDescKas').value.trim();
+    const nominal = Number(document.getElementById('inpNominalKas').value);
+
+    // Validasi
+    if (!kategori || !keterangan || !nominal || nominal <= 0) {
+        alert('Mohon lengkapi semua data transaksi.');
+        return;
+    }
+
+    try {
+        // Ambil user yang sedang login
+        const {
+            data: { user },
+            error: userError
+        } = await supabaseClient.auth.getUser();
+
+        if (userError || !user) {
+            alert('Session login tidak ditemukan. Silakan login kembali.');
+            return;
         }
+
+        // Simpan ke Supabase
+        const { data, error } = await supabaseClient
+            .from('kas_keuangan')
+            .insert({
+                tanggal: new Date().toISOString().split('T')[0],
+                jenis: jenis === 'in' ? 'pemasukan' : 'pengeluaran',
+                kategori: kategori,
+                keterangan: keterangan,
+                nominal: nominal,
+                created_by: user.id
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('SAVE KAS ERROR:', error);
+            alert('Gagal menyimpan transaksi: ' + error.message);
+            return;
+        }
+
+        console.log('TRANSAKSI BERHASIL:', data);
+
+        // Tutup modal
+        toggleModal('modalKas', false);
+
+        // Reset form
+        e.target.reset();
+
+        alert('Transaksi berhasil disimpan.');
+
+    } catch (error) {
+        console.error('KAS ERROR:', error);
+        alert('Terjadi kesalahan: ' + error.message);
+    }
+}
+        
 
         function saveSurat(e) {
             e.preventDefault();
