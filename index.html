@@ -1094,6 +1094,34 @@
         SUPABASE_URL,
         SUPABASE_PUBLISHABLE_KEY
     );
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        const newPassword = prompt('Masukkan password baru:');
+
+        if (!newPassword) {
+            alert('Password baru wajib diisi.');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            alert('Password minimal 6 karakter.');
+            return;
+        }
+
+        supabaseClient.auth.updateUser({
+            password: newPassword
+        }).then(({ error }) => {
+            if (error) {
+                alert('Gagal mengubah password: ' + error.message);
+                return;
+            }
+
+            alert('Password berhasil diubah. Silakan login kembali.');
+            window.location.hash = '';
+            window.location.reload();
+        });
+    }
+});
     // Bersihkan error Auth dari URL
 if (window.location.hash.includes('error=')) {
     window.history.replaceState(
