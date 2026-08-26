@@ -1129,7 +1129,28 @@
         });
     }
 });
-    // Bersihkan error Auth dari URL
+    async function logoutUser() {
+    try {
+        const { error } = await supabaseClient.auth.signOut();
+
+        if (error) {
+            alert('Logout gagal: ' + error.message);
+            return;
+        }
+
+        // Bersihkan session lokal
+        localStorage.removeItem('supabase.auth.token');
+        sessionStorage.clear();
+
+        // Kembali ke halaman login
+        window.location.hash = '';
+        window.location.reload();
+
+    } catch (error) {
+        alert('Logout gagal: ' + error.message);
+    }
+}
+// Bersihkan error Auth dari URL
 if (window.location.hash.includes('error=')) {
     window.history.replaceState(
         {},
