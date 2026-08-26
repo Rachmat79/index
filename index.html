@@ -1094,6 +1094,14 @@
         SUPABASE_URL,
         SUPABASE_PUBLISHABLE_KEY
     );
+    // Bersihkan error Auth dari URL
+if (window.location.hash.includes('error=')) {
+    window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
+    );
+}
 </script>
 <!-- RT SMART MANAGEMENT - SUPABASE LOGIN -->
 <script>
