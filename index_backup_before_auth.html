@@ -1081,7 +1081,7 @@
         }
 
         window.onload = function() {
-                    renderAll();
+            renderAll();
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1094,43 +1094,6 @@
         SUPABASE_URL,
         SUPABASE_PUBLISHABLE_KEY
     );
-    supabaseClient.auth.onAuthStateChange((event, session) => {
-         console.log('AUTH EVENT:', event);
-    if (event === 'PASSWORD_RECOVERY') {
-        const newPassword = prompt('Masukkan password baru:');
-
-        if (!newPassword) {
-            alert('Password baru wajib diisi.');
-            return;
-        }
-
-        if (newPassword.length < 6) {
-            alert('Password minimal 6 karakter.');
-            return;
-        }
-
-        supabaseClient.auth.updateUser({
-            password: newPassword
-        }).then(({ error }) => {
-            if (error) {
-                alert('Gagal mengubah password: ' + error.message);
-                return;
-            }
-
-            alert('Password berhasil diubah. Silakan login kembali.');
-            window.location.hash = '';
-            window.location.reload();
-        });
-    }
-});
-    // Bersihkan error Auth dari URL
-if (window.location.hash.includes('error=')) {
-    window.history.replaceState(
-        {},
-        document.title,
-        window.location.pathname
-    );
-}
 </script>
 <!-- RT SMART MANAGEMENT - SUPABASE LOGIN -->
 <script>
@@ -1143,12 +1106,6 @@ if (window.location.hash.includes('error=')) {
             const login = document.createElement('div');
 
             login.id = 'rtLoginScreen';
-            login.style.position = 'fixed';
-login.style.top = '0';
-login.style.left = '0';
-login.style.width = '100%';
-login.style.height = '100%';
-login.style.zIndex = '999999';
 
             login.innerHTML = `
                 <div style="
