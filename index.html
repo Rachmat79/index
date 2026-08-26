@@ -675,23 +675,46 @@
         }
 
         function switchRole(role) {
-            currentRole = role;
-            const badge = document.getElementById('roleBadge');
-            const welcome = document.getElementById('welcomeHeading');
-            
-            if(role === 'ketua') {
-                badge.innerText = "Akses: Ketua / Pengurus RT";
-                badge.className = "bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full";
-                welcome.innerText = "Ringkasan Operasional RT";
-                document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-            } else {
-                badge.innerText = "Akses: Warga";
-                badge.className = "bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full";
-                welcome.innerText = "Selamat Datang, Bapak Agus Pratama";
-                document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-                switchIuranTab('list');
-            }
-            renderAll();
+
+    // Role harus mengikuti akun yang sedang login
+    if (window.authenticatedRole) {
+        role = window.authenticatedRole;
+    }
+
+    currentRole = role;
+
+    const badge = document.getElementById('roleBadge');
+    const welcome = document.getElementById('welcomeHeading');
+
+    if (role === 'ketua') {
+
+        badge.innerText = "Akses: Ketua / Pengurus RT";
+        badge.className =
+            "bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full";
+
+        welcome.innerText = "Ringkasan Operasional RT";
+
+        document
+            .querySelectorAll('.admin-only')
+            .forEach(el => el.classList.remove('hidden'));
+
+    } else {
+
+        badge.innerText = "Akses: Warga";
+        badge.className =
+            "bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full";
+
+        welcome.innerText = "Selamat Datang, Bapak Agus Pratama";
+
+        document
+            .querySelectorAll('.admin-only')
+            .forEach(el => el.classList.add('hidden'));
+
+        switchIuranTab('list');
+    }
+
+    renderAll();
+}
         }
 
         function toggleModal(id, show) {
@@ -1435,6 +1458,7 @@ login.style.zIndex = '999999';
         if (typeof renderAll === 'function') {
             renderAll();
         }
+        window.authenticatedRole = profile.role;
 
         if (typeof switchRole === 'function') {
             switchRole(profile.role);
