@@ -777,19 +777,98 @@
                 </tr>
             `).join('');
         }
+async function renderTableKeuangan() {
+    const tbody = document.getElementById('tbodyKeuangan');
 
-        function renderTableKeuangan() {
-            const tbody = document.getElementById('tbodyKeuangan');
-            tbody.innerHTML = dbKas.map(k => `
-                <tr class="hover:bg-slate-50">
-                    <td class="p-3 text-slate-500">${k.date}</td>
-                    <td class="p-3 font-medium text-slate-700"><span class="bg-slate-100 px-2 py-0.5 rounded">${k.category}</span></td>
-                    <td class="p-3 text-slate-800">${k.desc}</td>
-                    <td class="p-3 text-right font-medium text-emerald-600">${k.type === 'in' ? 'Rp ' + k.amount.toLocaleString('id-ID') : '-'}</td>
-                    <td class="p-3 text-right font-medium text-rose-600">${k.type === 'out' ? 'Rp ' + k.amount.toLocaleString('id-ID') : '-'}</td>
+    if (!tbody) return;
+
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="5" class="p-5 text-center text-slate-400">
+                Memuat data transaksi...
+            </td>
+        </tr>
+    `;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('kas_keuangan')
+            .select('id, tanggal, jenis, kategori, keterangan, nominal, created_by, created_at')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('LOAD KAS ERROR:', error);
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="p-5 text-center text-rose-600">
+                        Gagal memuat data transaksi.
+                    </td>
                 </tr>
-            `).join('');
+            `;
+
+            return;
         }
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="p-5 text-center text-slate-400">
+                        Belum ada transaksi.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        tbody.innerHTML = data.map(k => {
+            const nominal = Number(k.nominal) || 0;
+
+            return `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 text-slate-500">
+                        ${k.tanggal || '-'}
+                    </td>
+
+                    <td class="p-3 font-medium text-slate-700">
+                        <span class="bg-slate-100 px-2 py-1 rounded">
+                            ${k.kategori || '-'}
+                        </span>
+                    </td>
+
+                    <td class="p-3 text-slate-800">
+                        ${k.keterangan || '-'}
+                    </td>
+
+                    <td class="p-3 text-right font-medium text-emerald-600">
+                        ${k.jenis === 'pemasukan'
+                            ? 'Rp ' + nominal.toLocaleString('id-ID')
+                            : '-'}
+                    </td>
+
+                    <td class="p-3 text-right font-medium text-rose-600">
+                        ${k.jenis === 'pengeluaran'
+                            ? 'Rp ' + nominal.toLocaleString('id-ID')
+                            : '-'}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error('RENDER KAS ERROR:', err);
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="p-5 text-center text-rose-600">
+                    Terjadi kesalahan saat memuat Buku Kas.
+                </td>
+            </tr>
+        `;
+    }
+}
+        
 
         function renderTableSurat() {
             const tbody = document.getElementById('tbodySurat');
