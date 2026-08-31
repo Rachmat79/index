@@ -53,7 +53,7 @@
 
             <div class="flex items-center space-x-3 text-sm">
                 <span class="hidden md:inline text-indigo-200">Mode Akses:</span>
-                <select id="roleSelect" onchange="switchRole(this.value)" class="bg-indigo-800 border border-indigo-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium cursor-pointer">
+                <select id="roleSelect" onchange="switchRole(this.value)" disabled title="Mode akses mengikuti role akun Supabase" class="bg-indigo-800 border border-indigo-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium cursor-not-allowed opacity-95">
                     <option value="ketua">👑 Ketua / Pengurus RT</option>
                     <option value="warga">👤 Warga (Bpk. Agus)</option>
                 </select>
@@ -677,12 +677,25 @@
 
         function switchRole(role) {
 
-    // Role harus mengikuti akun yang sedang login
+    // Role aplikasi WAJIB mengikuti role akun yang sudah
+    // diverifikasi dari Supabase. User tidak boleh mengganti
+    // role hanya melalui dropdown UI.
     if (window.authenticatedRole) {
         role = window.authenticatedRole;
     }
 
     currentRole = role;
+
+    // Sinkronkan tampilan dropdown dengan role sebenarnya.
+    // Dropdown dibuat disabled sehingga hanya menjadi indikator
+    // role, bukan alat untuk mengganti hak akses.
+    const roleSelect = document.getElementById('roleSelect');
+    if (roleSelect) {
+        roleSelect.value = role;
+        roleSelect.disabled = true;
+        roleSelect.classList.remove('cursor-pointer');
+        roleSelect.classList.add('cursor-not-allowed');
+    }
 
     const badge = document.getElementById('roleBadge');
     const welcome = document.getElementById('welcomeHeading');
