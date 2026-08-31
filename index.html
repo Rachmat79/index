@@ -217,7 +217,6 @@
                                     <th class="p-3">Deskripsi Transaksi</th>
                                     <th class="p-3 text-right text-emerald-700">Pemasukan (+)</th>
                                     <th class="p-3 text-right text-rose-700">Pengeluaran (-)</th>
-                                    <th class="p-3 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="tbodyKeuangan" class="divide-y divide-slate-100">
@@ -783,6 +782,56 @@ async function renderTableKeuangan() {
 
     if (!tbody) return;
 
+    tbody.innerHTML = dbKas.map(k => `
+        <tr class="hover:bg-slate-50">
+            <td class="p-3 text-slate-500">
+                ${k.date}
+            </td>
+
+            <td class="p-3 font-medium text-slate-700">
+                <span class="bg-slate-100 px-2 py-0.5 rounded">
+                    ${k.category}
+                </span>
+            </td>
+
+            <td class="p-3 text-slate-800">
+                ${k.desc}
+            </td>
+
+            <td class="p-3 text-right font-medium text-emerald-600">
+                ${k.type === 'in'
+                    ? 'Rp ' + Number(k.amount).toLocaleString('id-ID')
+                    : '-'
+                }
+            </td>
+
+            <td class="p-3 text-right font-medium text-rose-600">
+                ${k.type === 'out'
+                    ? 'Rp ' + Number(k.amount).toLocaleString('id-ID')
+                    : '-'
+                }
+            </td>
+
+            <td class="p-3 text-center whitespace-nowrap">
+                <button
+                    onclick="editKas('${k.id}')"
+                    class="text-indigo-600 hover:text-indigo-800 font-medium mr-3">
+                    ✏️ Edit
+                </button>
+
+                <button
+                    onclick="deleteKas('${k.id}')"
+                    class="text-rose-600 hover:text-rose-800 font-medium">
+                    🗑️ Hapus
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+    const tbody = document.getElementById('tbodyKeuangan');
+
+    if (!tbody) return;
+
     tbody.innerHTML = `
         <tr>
             <td colspan="5" class="p-5 text-center text-slate-400">
@@ -1253,34 +1302,91 @@ async function renderTableKeuangan() {
         SUPABASE_PUBLISHABLE_KEY
     );
     supabaseClient.auth.onAuthStateChange((event, session) => {
-         console.log('AUTH EVENT:', event);
-    if (event === 'PASSWORD_RECOVERY') {
-        const newPassword = prompt('Masukkan password baru:');
+        console.log('AUTH EVENT:', event);
 
-        if (!newPassword) {
-            alert('Password baru wajib diisi.');
-            return;
+        if (event === 'PASSWORD_RECOVERY') {
+            showResetPasswordScreen();
         }
+    });
 
-        if (newPassword.length < 6) {
-            alert('Password minimal 6 karakter.');
-            return;
-        }
+    function showResetPasswordScreen() {
+        const existing = document.getElementById('rtResetPasswordScreen');
+        if (existing) return;
 
-        supabaseClient.auth.updateUser({
-            password: newPassword
-        }).then(({ error }) => {
-            if (error) {
-                alert('Gagal mengubah password: ' + error.message);
-                return;
-            }
-
-            alert('Password berhasil diubah. Silakan login kembali.');
-            window.location.hash = '';
-            window.location.reload();
+        const reset = document.createElement('div');
+        reset.id = 'rtResetPasswordScreen';
+        Object.assign(reset.style, {
+            position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', zIndex: '1000000'
         });
+
+        reset.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;padding:20px;font-family:Arial,sans-serif;">
+                <div style="width:100%;max-width:420px;background:white;border-radius:20px;padding:32px;box-shadow:0 10px 30px rgba(0,0,0,.12);">
+                    <div style="text-align:center;margin-bottom:24px;">
+                        <div style="font-size:48px;">🔐</div>
+                        <h1 style="margin:8px 0 4px;font-size:24px;font-weight:700;color:#312e81;">Reset Password</h1>
+                        <p style="margin:0;color:#64748b;font-size:14px;">Buat password baru untuk akun RT Smart Management.</p>
+                    </div>
+                    <label style="display:block;margin-bottom:7px;font-weight:600;color:#334155;">Password Baru</label>
+                    <input id="rtNewPassword" type="password" placeholder="Minimal 6 karakter" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:14px;font-size:15px;">
+                    <label style="display:block;margin-bottom:7px;font-weight:600;color:#334155;">Konfirmasi Password</label>
+                    <input id="rtConfirmPassword" type="password" placeholder="Ulangi password baru" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:18px;font-size:15px;">
+                    <button id="rtResetPasswordButton" type="button" style="width:100%;padding:13px;border:none;border-radius:10px;background:#3730a3;color:white;font-size:16px;font-weight:700;cursor:pointer;">🔑 Simpan Password Baru</button>
+                    <div id="rtResetPasswordMessage" style="margin-top:16px;text-align:center;font-size:14px;min-height:20px;line-height:1.5;"></div>
+                </div>
+            </div>`;
+
+        document.body.appendChild(reset);
+        document.body.style.overflow = 'hidden';
+        document.getElementById('rtResetPasswordButton').addEventListener('click', updateNewPassword);
     }
-});
+
+    async function updateNewPassword() {
+        const newPassword = document.getElementById('rtNewPassword').value;
+        const confirmPassword = document.getElementById('rtConfirmPassword').value;
+        const message = document.getElementById('rtResetPasswordMessage');
+        const button = document.getElementById('rtResetPasswordButton');
+
+        if (!newPassword || !confirmPassword) {
+            message.style.color = '#dc2626';
+            message.textContent = 'Password baru dan konfirmasi password wajib diisi.';
+            return;
+        }
+        if (newPassword.length < 6) {
+            message.style.color = '#dc2626';
+            message.textContent = 'Password minimal 6 karakter.';
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            message.style.color = '#dc2626';
+            message.textContent = 'Konfirmasi password tidak sama.';
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = '⏳ Menyimpan...';
+        message.style.color = '#475569';
+        message.textContent = 'Sedang memperbarui password...';
+
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) {
+            console.error('RESET PASSWORD ERROR:', error);
+            message.style.color = '#dc2626';
+            message.textContent = 'Gagal mengubah password: ' + error.message;
+            button.disabled = false;
+            button.textContent = '🔑 Simpan Password Baru';
+            return;
+        }
+
+        message.style.color = '#059669';
+        message.textContent = 'Password berhasil diubah. Mengarahkan ke halaman login...';
+        await supabaseClient.auth.signOut();
+        setTimeout(() => {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            window.location.reload();
+        }, 1200);
+    }
+
     async function logoutUser() {
     try {
         const { error } = await supabaseClient.auth.signOut();
@@ -1447,6 +1553,12 @@ login.style.zIndex = '999999';
                             🔐 Masuk
                         </button>
 
+                        <div style="text-align:right;margin-top:10px;">
+                            <button id="rtForgotPasswordButton" type="button" style="border:none;background:none;color:#4f46e5;font-size:13px;font-weight:600;cursor:pointer;padding:4px 0;">
+                                🔑 Lupa Password?
+                            </button>
+                        </div>
+
                         <div
                             id="rtLoginMessage"
                             style="
@@ -1468,6 +1580,53 @@ login.style.zIndex = '999999';
             document
                 .getElementById('rtLoginButton')
                 .addEventListener('click', this.login);
+
+            document
+                .getElementById('rtForgotPasswordButton')
+                .addEventListener('click', this.forgotPassword);
+        },
+
+        async forgotPassword() {
+            const emailInput = document.getElementById('rtLoginEmail');
+            const message = document.getElementById('rtLoginMessage');
+            const button = document.getElementById('rtForgotPasswordButton');
+            const email = emailInput.value.trim();
+
+            if (!email) {
+                message.style.color = '#dc2626';
+                message.textContent = 'Masukkan email terlebih dahulu untuk menerima link reset password.';
+                emailInput.focus();
+                return;
+            }
+
+            if (!emailInput.checkValidity()) {
+                message.style.color = '#dc2626';
+                message.textContent = 'Format email tidak valid.';
+                emailInput.focus();
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = '⏳ Mengirim link...';
+            message.style.color = '#475569';
+            message.textContent = 'Sedang mengirim link reset password ke email Anda...';
+
+            const redirectTo = window.location.origin + window.location.pathname;
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+
+            if (error) {
+                console.error('FORGOT PASSWORD ERROR:', error);
+                message.style.color = '#dc2626';
+                message.textContent = 'Gagal mengirim link reset password: ' + error.message;
+                button.disabled = false;
+                button.textContent = '🔑 Lupa Password?';
+                return;
+            }
+
+            message.style.color = '#059669';
+            message.textContent = 'Link reset password sudah dikirim. Silakan cek email Anda.';
+            button.disabled = false;
+            button.textContent = '🔑 Kirim Ulang Link Reset';
         },
 
         async login() {
